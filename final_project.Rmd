@@ -1,0 +1,152 @@
+---
+title: "Plus-Minus Hockey Stat Analysis"
+output: html_document
+---
+# By Kevin Kruger
+
+## Introduction
+Hockey is a fast paced, dangerous, and thrilling sport that has grown to become one of the most popular sports in the world. General Managers (GMs) within the National Hockey League (NHL) are faced with the challenge of having to work inside one of the most restrictive salary caps in all of professional sports. Over 61% of teams within the NHL spend over 98% of the salary cap and because of this, the GMs of these teams must have dozens of data analysts working nonstop to analyze hundreds of different statistics to help their GMs get the players with the best value out of their salary cap. Only one team wins the Stanley Cup every year, and making sure that your team gets the most out of their money is critical in making sure that you have the best chance of winning it all.
+
+Within hockey, there are hundreds of different stats to look at, some much more complicated than others. Stats like goals, assists, and points help measure how often a player scores or helps their teammates score. Time on ice tracks how often a player is used in any given game since coaches may rotate the players on the ice at almost any time they want. Shots on goal measures how many times a player puts the puck on net, even if the goalie stops it. Power play goals measures how many goals a player scored with a man advantage. Plus-minus measures the goal differential while the player is on the ice. There are even stats like expected goals which weights shots on goals based on their location and type of shot.
+
+Here is some hockey terminology that will be important to know:
+•	Power play – when the opponents committed a penalty and your team has a man advantage for a given amount of time.
+•	Shorthanded – when your team commits a penalty and the opponents have a man advantage for a given amount of time.
+•	Forward – A position in hockey, these players are focused on making offensive plays.
+•	Defenseman – A position in hockey, these players are focused on stopping the opponents from scoring.
+•	Shot on goal – Any attempt to put the puck in the opponent’s net that would have gone in if the goalie had not been there.
+•	Goal – A shot that goes in the opponents net.
+•	Assist – Awarded when you were one of the two players to touch the puck most recently before it was scored by a teammate.
+•	Points – The sum of a players goals and assists.
+•	Blocks – When a non-goalie player stops a shot from becoming a shot on goal
+•	Hits – When a player slams into an opponent within two seconds of having the puck. There are many safety regulations that dictate what is a hit that will not be explained.
+•	Special Teams Points – How many points a player scores while on the power play or short handed
+
+## The Question
+I will seek to answer the following question:
+How useful is plus-minus in predicting player productivity?
+This is a hotly debated question within the hockey world as it is seen by many as a stat that has very little bearing over a player’s production. The reason for this debate its largely due to how the plus-minus stat is calculated in hockey. The plus-minus stat is calculated by taking the total number of goals scored for a player’s team while they are on the ice except for goals scored by their team on the power play minus the number of goals scored by the opponents while they are on the ice except goals scored by the opponents on the power play. The reason this is controversial is that if a player is playing on the power play, their plus-minus stat can only be hurt, because they will lose a point if they are scored on but will not gain any points if they score. By analyzing how plus-minus correlates to other important stats, I hope to evaluate it’s usefulness as a stat.
+
+## Data Curation
+The player statistics I used were found on Kaggle. These statistics were for the 2004-2018 seasons. The data was downloaded as a .csv and placed into the same directory as the rmarkdown file. I then used the following code to load the data:
+
+```{r knitr_setup, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+```{r data_curation, message=FALSE, warning=FALSE}
+library(tidyverse)
+stats <- read_csv("NHL 2004-2018 Player Data.csv")
+stats
+```
+
+## Data Management
+The first thing we need to do is to clean the position column of our data because we only want to distinguish between forwards and defensemen. This dataset breaks forwards down into left wing, right wing, and center and sometimes a combination of those which we do not need for our dataset.
+
+```{r data_managment1, message=FALSE, warning=FALSE}
+cleanstats <- stats %>%
+  mutate(Position = ifelse(Pos == 'D', 'D', 'F'))
+cleanstats
+```
+
+Next, we need to calculate special teams points. This is done by simply adding powerplay goals, powerplay assists, short handed goals, and short handed assists.
+
+```{r data_managment2, message=FALSE, warning=FALSE}
+cleanstats <- cleanstats %>%
+  mutate(STP = PP+SH+PP_1+SH_1)
+cleanstats
+```
+
+Next, we should drop any player seasons with less than 60 games as these players were likely injured and may skew our data.
+
+```{r data_managment3, message=FALSE, warning=FALSE}
+cleanstats <- cleanstats %>%
+  filter(GP > 60)
+cleanstats
+```
+
+Next, we need to normalize most of the stats based on how many games the player played.
+
+```{r data_managment4, message=FALSE, warning=FALSE}
+cleanstats <- cleanstats %>%
+  mutate(Goals=G/GP, Assists=A/GP, Points=PTS/GP, Shots=S/GP, Blocks=BLK/GP, Hits=HIT/GP, SpecialTeamsPoints=STP/GP)
+cleanstats
+```
+
+Next, we want to clean up the data by only selecting the data we want and renaming the columns to better names.
+
+```{r data_managment5, message=FALSE, warning=FALSE}
+cleanstats <- cleanstats %>%
+  select(Player, Team=Tm, Position, Goals, Assists, Points, Shots, TimeOnIce=ATOI, Blocks, Hits, SpecialTeamsPoints, PlusMinus=plusminus)
+cleanstats
+```
+
+Finally, we want to divide the data up into two tables, one for forwards and one for defensemen with only the stats that are relevant to each position in that table.
+
+```{r data_managment6, message=FALSE, warning=FALSE}
+dstats <- cleanstats %>%
+  select(Player, Team, Position, TimeOnIce, Blocks, Hits, SpecialTeamsPoints, PlusMinus) %>%
+  filter(Position == 'D')
+
+fstats <- cleanstats %>%
+  select(Player, Team, Position, Goals, Assists, Points, Shots, TimeOnIce, SpecialTeamsPoints, PlusMinus) %>%
+  filter(Position == 'F')
+dstats
+fstats
+```
+
+## Exploratory Data Analysis
+Exploratory data analysis is a great way for us to analyze the data without bias. We will create a scatter plot with a trend for each of the stats that we selected to measure performance. We will break it up into two sections, one for forwards and one for defensemen.
+
+We see quite the interesting trend, that plus minus actually has a noticeable correlation with the performance statistics for forwards, but no correlation with the performance statistics for defensemen. This is quite interesting because when used for hockey analytics, plus-minus is actually more commonly used for defensemen, which seems to be a mistake.
+
+
+```{r exploratory_data_analysis, message=FALSE, warning=FALSE}
+dplot1 <- dstats %>% ggplot(mapping = aes(label=Player, x=TimeOnIce, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Defensemen")
+dplot2 <- dstats %>% ggplot(mapping = aes(label=Player, x=Blocks, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Defensemen")
+dplot3 <- dstats %>% ggplot(mapping = aes(label=Player, x=Hits, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Defensemen")
+dplot4 <- dstats %>% ggplot(mapping = aes(label=Player, x=SpecialTeamsPoints, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Defensemen")
+fplot1 <- fstats %>% ggplot(mapping = aes(label=Player, x=Goals, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+fplot2 <- fstats %>% ggplot(mapping = aes(label=Player, x=Assists, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+fplot3 <- fstats %>% ggplot(mapping = aes(label=Player, x=Points, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+fplot4 <- fstats %>% ggplot(mapping = aes(label=Player, x=Shots, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+fplot5 <- fstats %>% ggplot(mapping = aes(label=Player, x=TimeOnIce, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+fplot6 <- fstats %>% ggplot(mapping = aes(label=Player, x=SpecialTeamsPoints, y=PlusMinus)) + geom_point()+ geom_smooth(method=lm) + ggtitle("Forwards")
+dplot1
+dplot2
+dplot3
+dplot4
+fplot1
+fplot2
+fplot3
+fplot4
+fplot5
+fplot6
+```
+
+## Hypothesis Testing
+By looking at the plots, it seems like plus minus has the largest correlation with points scored by forwards, so we will look to see if we can reliably predict plus-minus of a player based on their points scored. My hypothesis is that we will be able to estimate a forward’s plus-minus within 10 points of it’s actual value 60% of the time by analyzing their points per game.
+
+In order to do this we first need to calculate the predicted value and compare it with the actual value for every forward.
+
+```{r hypothesis_testing1, message=FALSE, warning=FALSE}
+fstats$Prediction <- predict(loess(PlusMinus~Points, fstats), fstats$Points)
+fstats$Difference <- abs(fstats$Prediction - fstats$PlusMinus)
+fstats$Hypothesis <- fstats$Difference < 10
+
+select(fstats, Player, Prediction, PlusMinus, Difference, Hypothesis)
+```
+
+Next we need to calculate the p_value of the null hypothesis we presented. We will do this with the following code with 0.6 representing our predicted percentage and 4153 representing the total number of forwards in our dataset.
+
+```{r hypothesis_testing2, message=FALSE, warning=FALSE}
+std <- sqrt(0.6 * (1 - 0.6) / 4153)
+mean <- length(fstats$Hypothesis[fstats$Hypothesis==TRUE])/4153
+p_value <- 1-pnorm(mean, 0.6, std)
+p_value
+```
+
+The p_value generated is 0 which means that we can not reject our hypothesis.
+
+## Analysis
+The largest takeaway here is that plus-minus is not a useless stat in hockey, it can be used to accurately predict the production of a forward in hockey at a reliable rate. However, plus-minus should be used in a much different way than it is currently being used, as it is currently primarily being used for defensemen, those whom we have proven this is not an accurate stat to predict production. I think it would be interesting in the future to use this same method with other production statistics like expected goals to see if the results we landed on hold up.
